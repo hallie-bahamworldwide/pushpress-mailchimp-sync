@@ -1,5 +1,5 @@
 import { runWithConcurrency } from "./concurrency.js";
-import { extractFacility, isSyncable } from "./mapping.js";
+import { extractFacility, isSyncable, statusLabel } from "./mapping.js";
 import { createMailchimpConfig, upsertMember } from "./mailchimp.js";
 import {
   createPushPressClient,
@@ -40,7 +40,7 @@ export async function runSync(): Promise<void> {
         email: customer.email,
         firstName: customer.name.first,
         lastName: customer.name.last,
-        status: customer.role!,
+        status: statusLabel(customer.role!),
         facility,
       });
       succeeded++;
