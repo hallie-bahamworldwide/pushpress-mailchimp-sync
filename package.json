@@ -1,0 +1,19 @@
+{
+  "name": "pushpress-mailchimp-sync",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Scheduled reconciliation sync of PushPress Core contacts (name, member status, facility location) into Mailchimp.",
+  "scripts": {
+    "sync": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pushpress/pushpress": "^1.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
