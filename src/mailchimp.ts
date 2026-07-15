@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { requireEnv } from "./env.js";
-import type { Facility } from "./mapping.js";
+import { FACILITIES, facilityMergeValue, type Facility } from "./mapping.js";
 
 export type MailchimpConfig = {
   apiKey: string;
@@ -81,7 +81,8 @@ export type ContactUpsert = {
   firstName: string;
   lastName: string;
   status: string;
-  location: Facility | undefined;
+  /** Only members carry a facility; leads/non-members/ex-members are undefined. */
+  facility: Facility | undefined;
 };
 
 /** Idempotent create-or-update of a single contact, keyed by email. */
@@ -91,10 +92,10 @@ export async function upsertMember(config: MailchimpConfig, contact: ContactUpse
     FNAME: contact.firstName,
     LNAME: contact.lastName,
     STATUS: contact.status,
+    // The LOCATION field is a Mailchimp dropdown restricted to "H"/"M". Sending
+    // "" clears it for anyone who isn't currently a member at a known facility.
+    LOCATION: contact.facility ? facilityMergeValue(contact.facility) : "",
   };
-  if (contact.location) {
-    mergeFields["LOCATION"] = contact.location;
-  }
 
   await mailchimpRequest(config, `/lists/${config.listId}/members/${hash}`, {
     method: "PUT",
@@ -103,5 +104,28 @@ export async function upsertMember(config: MailchimpConfig, contact: ContactUpse
       status_if_new: config.statusIfNew,
       merge_fields: mergeFields,
     }),
+  });
+
+  await syncFacilityTags(config, hash, contact.facility);
+}
+
+/**
+ * Applies the Hammond/Mandeville tag matching the contact's current facility
+ * and removes the other one, so tags never go stale as people change
+ * facilities or membership status.
+ */
+async function syncFacilityTags(
+  config: MailchimpConfig,
+  subscriberHashValue: string,
+  facility: Facility | undefined,
+): Promise<void> {
+  const tags = FACILITIES.map((name) => ({
+    name,
+    status: name === facility ? "active" : "inactive",
+  }));
+
+  await mailchimpRequest(config, `/lists/${config.listId}/members/${subscriberHashValue}/tags`, {
+    method: "POST",
+    body: JSON.stringify({ tags }),
   });
 }

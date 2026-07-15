@@ -27,18 +27,23 @@ export async function runSync(): Promise<void> {
 
   await runWithConcurrency(syncable, CONCURRENCY, async (customer) => {
     try {
-      const enrollment = await fetchRelevantEnrollment(pushPress, customer.id);
+      // Only members carry a facility - skip the enrollment/plan lookups entirely
+      // for leads/non-members/ex-members.
+      const enrollment =
+        customer.role === "member"
+          ? await fetchRelevantEnrollment(pushPress, customer.id)
+          : undefined;
       const planName = enrollment?.planId
         ? await fetchPlanName(pushPress, enrollment.planId)
         : null;
-      const location = extractFacility(planName);
+      const facility = extractFacility(customer.role, planName);
 
       await upsertMember(mailchimp, {
         email: customer.email,
         firstName: customer.name.first,
         lastName: customer.name.last,
         status: customer.role!,
-        location,
+        facility,
       });
       succeeded++;
     } catch (error) {
