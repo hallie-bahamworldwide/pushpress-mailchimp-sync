@@ -10,6 +10,19 @@ export function isSyncable(customer: Customer): boolean {
   return !!customer.email && !!customer.role && SYNCABLE_ROLES.has(customer.role);
 }
 
+// Mailchimp automations/segments match Member Status by exact text (e.g.
+// "Member Status is Member"), so this must stay Title Case to match.
+const STATUS_LABELS: Record<string, string> = {
+  lead: "Lead",
+  member: "Member",
+  "non-member": "Non-Member",
+  "ex-member": "Ex-Member",
+};
+
+export function statusLabel(role: string): string {
+  return STATUS_LABELS[role] ?? role;
+}
+
 export const FACILITIES = ["Hammond", "Mandeville"] as const;
 export type Facility = (typeof FACILITIES)[number];
 
