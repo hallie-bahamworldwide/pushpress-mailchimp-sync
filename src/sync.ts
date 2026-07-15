@@ -1,6 +1,6 @@
 import { runWithConcurrency } from "./concurrency.js";
 import { extractFacility, isSyncable } from "./mapping.js";
-import { createMailchimpConfig, ensureMergeFields, upsertMember } from "./mailchimp.js";
+import { createMailchimpConfig, upsertMember } from "./mailchimp.js";
 import {
   createPushPressClient,
   fetchAllCustomers,
@@ -13,8 +13,6 @@ const CONCURRENCY = 5;
 export async function runSync(): Promise<void> {
   const pushPress = createPushPressClient();
   const mailchimp = createMailchimpConfig();
-
-  await ensureMergeFields(mailchimp);
 
   const allCustomers = await fetchAllCustomers(pushPress);
   const syncable = allCustomers.filter(isSyncable);

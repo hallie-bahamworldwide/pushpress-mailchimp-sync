@@ -49,28 +49,12 @@ async function mailchimpRequest(
   return response.status === 204 ? undefined : response.json();
 }
 
-const WANTED_MERGE_FIELDS = [
-  { tag: "STATUS", name: "Member Status", type: "text" },
-  { tag: "LOCATION", name: "Facility Location", type: "text" },
-] as const;
-
-/** Creates the STATUS/LOCATION merge fields on the audience if they don't already exist. */
-export async function ensureMergeFields(config: MailchimpConfig): Promise<void> {
-  const existing = (await mailchimpRequest(
-    config,
-    `/lists/${config.listId}/merge-fields?count=1000`,
-  )) as { merge_fields: Array<{ tag: string }> };
-  const existingTags = new Set(existing.merge_fields.map((field) => field.tag));
-
-  for (const field of WANTED_MERGE_FIELDS) {
-    if (!existingTags.has(field.tag)) {
-      await mailchimpRequest(config, `/lists/${config.listId}/merge-fields`, {
-        method: "POST",
-        body: JSON.stringify(field),
-      });
-    }
-  }
-}
+// These map to pre-existing merge fields in the audience (Settings > Audience
+// fields and *|MERGE|* tags) - "Member Status" and "Facility" respectively.
+// Do not auto-create fields here: doing so previously created unused
+// duplicates ("STATUS"/"LOCATION") alongside the real ones below.
+const STATUS_MERGE_TAG = "MBRSTATUS";
+const FACILITY_MERGE_TAG = "MMERGE26";
 
 export function subscriberHash(email: string): string {
   return createHash("md5").update(email.trim().toLowerCase()).digest("hex");
@@ -91,10 +75,10 @@ export async function upsertMember(config: MailchimpConfig, contact: ContactUpse
   const mergeFields: Record<string, string> = {
     FNAME: contact.firstName,
     LNAME: contact.lastName,
-    STATUS: contact.status,
-    // The LOCATION field is a Mailchimp dropdown restricted to "H"/"M". Sending
+    [STATUS_MERGE_TAG]: contact.status,
+    // The Facility field is a Mailchimp dropdown restricted to "H"/"M". Sending
     // "" clears it for anyone who isn't currently a member at a known facility.
-    LOCATION: contact.facility ? facilityMergeValue(contact.facility) : "",
+    [FACILITY_MERGE_TAG]: contact.facility ? facilityMergeValue(contact.facility) : "",
   };
 
   await mailchimpRequest(config, `/lists/${config.listId}/members/${hash}`, {
