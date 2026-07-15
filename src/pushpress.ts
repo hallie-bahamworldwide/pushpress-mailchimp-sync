@@ -8,6 +8,9 @@ export function createPushPressClient(): PushPressClient {
   return new PushPress({
     apiKey: requireEnv("PUSHPRESS_API_KEY"),
     companyId: requireEnv("PUSHPRESS_COMPANY_ID"),
+    // The SDK has no default timeout - without one, a single stalled
+    // connection could hang the entire run indefinitely.
+    timeoutMs: 20_000,
   });
 }
 
