@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { requireEnv } from "./env.js";
-import type { Facility } from "./mapping.js";
+import { FACILITIES, facilityMergeValue, type Facility } from "./mapping.js";
 
 export type MailchimpConfig = {
   apiKey: string;
@@ -49,28 +49,12 @@ async function mailchimpRequest(
   return response.status === 204 ? undefined : response.json();
 }
 
-const WANTED_MERGE_FIELDS = [
-  { tag: "STATUS", name: "Member Status", type: "text" },
-  { tag: "LOCATION", name: "Facility Location", type: "text" },
-] as const;
-
-/** Creates the STATUS/LOCATION merge fields on the audience if they don't already exist. */
-export async function ensureMergeFields(config: MailchimpConfig): Promise<void> {
-  const existing = (await mailchimpRequest(
-    config,
-    `/lists/${config.listId}/merge-fields?count=1000`,
-  )) as { merge_fields: Array<{ tag: string }> };
-  const existingTags = new Set(existing.merge_fields.map((field) => field.tag));
-
-  for (const field of WANTED_MERGE_FIELDS) {
-    if (!existingTags.has(field.tag)) {
-      await mailchimpRequest(config, `/lists/${config.listId}/merge-fields`, {
-        method: "POST",
-        body: JSON.stringify(field),
-      });
-    }
-  }
-}
+// These map to pre-existing merge fields in the audience (Settings > Audience
+// fields and *|MERGE|* tags) - "Member Status" and "Facility" respectively.
+// Do not auto-create fields here: doing so previously created unused
+// duplicates ("STATUS"/"LOCATION") alongside the real ones below.
+const STATUS_MERGE_TAG = "MBRSTATUS";
+const FACILITY_MERGE_TAG = "MMERGE26";
 
 export function subscriberHash(email: string): string {
   return createHash("md5").update(email.trim().toLowerCase()).digest("hex");
@@ -81,7 +65,8 @@ export type ContactUpsert = {
   firstName: string;
   lastName: string;
   status: string;
-  location: Facility | undefined;
+  /** Only members carry a facility; leads/non-members/ex-members are undefined. */
+  facility: Facility | undefined;
 };
 
 /** Idempotent create-or-update of a single contact, keyed by email. */
@@ -90,11 +75,11 @@ export async function upsertMember(config: MailchimpConfig, contact: ContactUpse
   const mergeFields: Record<string, string> = {
     FNAME: contact.firstName,
     LNAME: contact.lastName,
-    STATUS: contact.status,
+    [STATUS_MERGE_TAG]: contact.status,
+    // The Facility field is a Mailchimp dropdown restricted to "H"/"M". Sending
+    // "" clears it for anyone who isn't currently a member at a known facility.
+    [FACILITY_MERGE_TAG]: contact.facility ? facilityMergeValue(contact.facility) : "",
   };
-  if (contact.location) {
-    mergeFields["LOCATION"] = contact.location;
-  }
 
   await mailchimpRequest(config, `/lists/${config.listId}/members/${hash}`, {
     method: "PUT",
@@ -103,5 +88,28 @@ export async function upsertMember(config: MailchimpConfig, contact: ContactUpse
       status_if_new: config.statusIfNew,
       merge_fields: mergeFields,
     }),
+  });
+
+  await syncFacilityTags(config, hash, contact.facility);
+}
+
+/**
+ * Applies the Hammond/Mandeville tag matching the contact's current facility
+ * and removes the other one, so tags never go stale as people change
+ * facilities or membership status.
+ */
+async function syncFacilityTags(
+  config: MailchimpConfig,
+  subscriberHashValue: string,
+  facility: Facility | undefined,
+): Promise<void> {
+  const tags = FACILITIES.map((name) => ({
+    name,
+    status: name === facility ? "active" : "inactive",
+  }));
+
+  await mailchimpRequest(config, `/lists/${config.listId}/members/${subscriberHashValue}/tags`, {
+    method: "POST",
+    body: JSON.stringify({ tags }),
   });
 }
