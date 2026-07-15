@@ -25,28 +25,65 @@ export function createMailchimpConfig(): MailchimpConfig {
   };
 }
 
+const REQUEST_TIMEOUT_MS = 20_000;
+const MAX_ATTEMPTS = 3;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Every request gets a hard timeout and a few retries with backoff for
+ * transient failures (network errors, timeouts, rate limits, 5xxs). Without
+ * this, a single stalled connection could hang a worker - and the whole
+ * run - indefinitely, which is exactly the unreliability this sync exists
+ * to fix. Non-retryable errors (bad email, invalid data, etc.) still fail
+ * immediately.
+ */
 async function mailchimpRequest(
   config: MailchimpConfig,
   path: string,
   init?: RequestInit,
 ): Promise<unknown> {
-  const response = await fetch(`${config.baseUrl}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Basic ${Buffer.from(`anystring:${config.apiKey}`).toString("base64")}`,
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(`${config.baseUrl}${path}`, {
+        ...init,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        headers: {
+          Authorization: `Basic ${Buffer.from(`anystring:${config.apiKey}`).toString("base64")}`,
+          "Content-Type": "application/json",
+          ...init?.headers,
+        },
+      });
+    } catch (error) {
+      if (attempt === MAX_ATTEMPTS) {
+        throw new Error(
+          `Mailchimp ${init?.method ?? "GET"} ${path} timed out or failed to connect after ${MAX_ATTEMPTS} attempts: ${error}`,
+        );
+      }
+      await sleep(1000 * attempt);
+      continue;
+    }
 
-  if (!response.ok) {
+    if (response.ok) {
+      return response.status === 204 ? undefined : response.json();
+    }
+
+    const isRetryable = response.status === 429 || response.status >= 500;
+    if (isRetryable && attempt < MAX_ATTEMPTS) {
+      await sleep(1000 * attempt);
+      continue;
+    }
+
     const body = await response.text().catch(() => "");
     throw new Error(
       `Mailchimp ${init?.method ?? "GET"} ${path} failed: ${response.status} ${body}`,
     );
   }
 
-  return response.status === 204 ? undefined : response.json();
+  throw new Error(`Mailchimp ${init?.method ?? "GET"} ${path}: unreachable retry state`);
 }
 
 // These map to pre-existing merge fields in the audience (Settings > Audience
