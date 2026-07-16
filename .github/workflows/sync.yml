@@ -2,8 +2,8 @@ name: Sync PushPress to Mailchimp
 
 on:
   schedule:
-    # Every 4 hours. Edit the cron expression to change frequency.
-    - cron: "0 */4 * * *"
+    # Every 6 hours. Edit the cron expression to change frequency.
+    - cron: "0 */6 * * *"
   workflow_dispatch: {}
 
 jobs:
