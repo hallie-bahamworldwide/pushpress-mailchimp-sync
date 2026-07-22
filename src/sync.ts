@@ -10,6 +10,13 @@ import {
 
 const CONCURRENCY = 5;
 
+// A handful of contacts failing (typo'd emails, etc.) is normal and
+// shouldn't trigger a "run failed" notification. Only treat the run as
+// failed if nothing succeeded at all, or if failures make up more than
+// this share of syncable contacts - either signals a systemic problem
+// (bad credentials, API outage) rather than a few bad records.
+const FAILURE_RATE_THRESHOLD = 0.1;
+
 export async function runSync(): Promise<void> {
   const pushPress = createPushPressClient();
   const mailchimp = createMailchimpConfig();
@@ -56,6 +63,21 @@ export async function runSync(): Promise<void> {
     for (const failure of failures) {
       console.error(`  ${failure.email}: ${failure.error}`);
     }
-    throw new Error(`${failures.length} contact(s) failed to sync`);
+  }
+
+  if (syncable.length === 0) {
+    return;
+  }
+
+  if (succeeded === 0) {
+    throw new Error(`Sync failed entirely: 0/${syncable.length} contacts synced`);
+  }
+
+  const failureRate = failures.length / syncable.length;
+  if (failureRate > FAILURE_RATE_THRESHOLD) {
+    throw new Error(
+      `${failures.length}/${syncable.length} contacts failed to sync ` +
+        `(${(failureRate * 100).toFixed(1)}%), exceeding the ${FAILURE_RATE_THRESHOLD * 100}% threshold`,
+    );
   }
 }
