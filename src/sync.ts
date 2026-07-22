@@ -1,4 +1,5 @@
 import { runWithConcurrency } from "./concurrency.js";
+import { writeJobSummary } from "./jobSummary.js";
 import { extractFacility, isSyncable, statusLabel } from "./mapping.js";
 import { createMailchimpConfig, upsertMember } from "./mailchimp.js";
 import {
@@ -64,6 +65,13 @@ export async function runSync(): Promise<void> {
       console.error(`  ${failure.email}: ${failure.error}`);
     }
   }
+
+  writeJobSummary({
+    fetched: allCustomers.length,
+    syncable: syncable.length,
+    succeeded,
+    failures,
+  });
 
   if (syncable.length === 0) {
     return;
