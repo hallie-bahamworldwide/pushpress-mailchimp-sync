@@ -35,8 +35,11 @@ your company ID.
 - API key: Mailchimp → Account → Extras → API keys.
 - Audience/List ID: Mailchimp → Audience → Settings → Audience name and defaults.
 
-The sync automatically creates two merge fields on your audience if they
-don't already exist: `STATUS` and `LOCATION`.
+The sync writes to your audience's existing **Member Status** (`MBRSTATUS`)
+and **Facility** (`MMERGE26`) merge fields — it does not create fields, so if
+you're setting this up on a different Mailchimp audience than the one this
+was built for, check `STATUS_MERGE_TAG`/`FACILITY_MERGE_TAG` in
+`src/mailchimp.ts` match your audience's actual merge tags first.
 
 ### 3. Add repo secrets
 
@@ -49,13 +52,18 @@ In this repo's GitHub settings → Secrets and variables → Actions, add:
 
 ### 4. Done
 
-The workflow runs automatically every 4 hours. To change the frequency,
+The workflow runs automatically every 6 hours. To change the frequency,
 edit the cron expression in `.github/workflows/sync.yml`. To run it
 immediately, use the "Run workflow" button under the Actions tab
 (workflow_dispatch).
 
-A failed run shows as a red ✗ in the Actions tab, and per-contact failures
-are printed in the job log without blocking the rest of the sync.
+Per-contact failures (typo'd emails, etc.) are printed in the job log but
+don't fail the run or trigger a "run failed" email — a few bad records is
+normal. The run only shows as failed (red ✗ / failure notification) if
+**nothing** synced at all, or if **more than 10%** of contacts failed,
+either of which points to something systemic (bad credentials, API outage)
+rather than a handful of bad records. Adjust `FAILURE_RATE_THRESHOLD` in
+`src/sync.ts` if you want a stricter or looser cutoff.
 
 ## Local development
 
